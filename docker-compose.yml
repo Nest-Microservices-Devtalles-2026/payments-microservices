@@ -1,0 +1,24 @@
+services:
+  stripe:
+    image: stripe/stripe-cli:latest
+    container_name: stripe-cli
+    restart: unless-stopped
+    tty: true            # Mantiene la terminal activa
+    stdin_open: true     # Mantiene el flujo de entrada abierto
+    volumes:
+      - ./stripe_config:/root/.config/stripe
+    # Este comando es el que evita que el contenedor se muera
+    command: listen --forward-to http://host.docker.internal:3003/payments/webhook
+
+# NOTA DE DOCKER:
+
+# ¿Cuándo usar el nombre del contenedor y cuándo usar host.docker.internal?
+
+# Regla de ORO:
+
+# Si la comunicación es entre 2 contenedores: Se usa el nombre del contenedor (o el nombre del servicio definido en docker-compose.yml), ya que Docker los une en una red interna privada.
+
+# Si la comunicación va desde dentro de un contenedor hacia un servicio fuera de Docker (en tu máquina local): Se usa host.docker.internal, ya que este actúa como un "puente" para salir de la red aislada del contenedor y alcanzar el host (tu PC).
+
+# Nota adicional: Si usas Linux nativo, recuerda agregar extra_hosts: - "host.docker.internal:host-gateway" en tu docker-compose.yml para que host.docker.internal
+
