@@ -1,14 +1,20 @@
-import { Injectable } from '@nestjs/common';
-import { envs } from 'src/config';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { envs, NATS_SERVICE } from 'src/config';
 import Stripe from 'stripe';
 import { PaymentSessionDto } from './dto/payment-session.dto';
 import { Request, Response } from 'node_modules/@types/express';
 import { metadata } from 'node_modules/reflect-metadata/no-conflict';
+import { ClientProxy } from 'node_modules/@nestjs/microservices';
 
 
 @Injectable()
 export class PaymentsService {
-    private readonly stripe = new Stripe(envs.stripeSecret)
+    private readonly stripe = new Stripe(envs.stripeSecret);
+    private readonly logger = new Logger('PaymentsService');
+
+    constructor(
+        @Inject(NATS_SERVICE) private readonly client: ClientProxy  
+    ){}
 
     async createPaymentSession(paymentSessionDto: PaymentSessionDto) {
 
@@ -32,22 +38,27 @@ export class PaymentsService {
 
             // colocar aqui el ID de mi orden
             payment_intent_data: {
-                
+
                 /**
                  * En la metada podemos colocar cualquier cosa que 
                  * queramos
                  */
                 metadata: {
-                    orderId 
+                    orderId
                 }
             },
             line_items: lineItems,
             mode: 'payment',
             success_url: envs.stripeSuccessURL,
-            cancel_url: envs.stripecancelURL
+            cancel_url: envs.stripecancelURL,
         });
 
-        return session;
+        // return session;
+        return {
+            cancelUrl: session.cancel_url,
+            successUrl: session.success_url,
+            url: session.url
+        }
     }
 
     async stripeWebhook(req: Request, res: Response) {
@@ -58,7 +69,7 @@ export class PaymentsService {
         // Usar este (A manera de comunicacion REAL entre stripe y nuestro webhook) para probar con la plataforma de stripe 
         const stripeEndpointSecret = envs.endpointSecretOfficial;
         let event;
-        
+
         if (stripeEndpointSecret) {
             const signature = req.headers['stripe-signature'] as string;
 
@@ -86,13 +97,22 @@ export class PaymentsService {
 
                         const chargeSucceeded = event.data.object;
                         // TODO: call to microservices
-                        console.log({
-                            metadata: chargeSucceeded.metadata,
-                            orderId: chargeSucceeded.metadata.orderId
-                        });
-                    break;
+                        const payload = {
+                            stripePaymentId: chargeSucceeded.id,
+                            orderId: chargeSucceeded.metadata.orderId,
+                            receiptUrl: chargeSucceeded.receipt_url
+                        }
 
-                    default: 
+                        this.logger.log({
+                            payload
+                        })
+
+                        console.log('llego aqui')
+                        this.client.emit('payment.succeded', payload);
+
+                        break;
+
+                    default:
                         console.log(`Event ${event.type} not handle`);
                 }
 
