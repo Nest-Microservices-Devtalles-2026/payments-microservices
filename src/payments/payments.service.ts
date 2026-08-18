@@ -92,6 +92,8 @@ export class PaymentsService {
                     stripeEndpointSecret
                 );
 
+                console.log('event', event);
+
                 switch (event.type) {
                     case 'charge.succeeded':
 
